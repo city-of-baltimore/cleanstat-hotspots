@@ -1,0 +1,308 @@
+---
+title: "Illegal Dumping/Cleaning Repeaters"
+author: "Justin Elszasz"
+email: "justin.elszasz@baltimorecity.gov"
+date: "Tuesday, July 23, 2019"
+output:
+  html_notebook:
+    code_folding: hide
+    fig_height: 5
+    fig_width: 10
+    toc: yes
+    toc_depth: 2
+---
+
+```{r setup, include = T, echo = T, message = FALSE, cache = TRUE}
+knitr::opts_chunk$set(echo = T, 
+                      warning = F, 
+                      message = F, 
+                      include = T,
+                      fig.width = 10,
+                      fig.height = 5)
+```
+
+```{r libraries}
+library(tidyverse)
+library(RSocrata)
+#library(RcppRoll)
+library(ggiteam)
+#library(staplr)
+#library(scales)
+library(lubridate)
+library(readxl)
+library(fuzzyjoin)
+#library(rgdal)
+#library(tidyverse)
+#library(RSocrata)
+#library(sp)
+#library(leaflet)
+#library(RODBC)
+#library(htmltools)
+#library(rgdal)
+#library(geojsonsf)
+#library(leaflet.extras)
+#library(mapview)
+
+```
+
+```{r load_data, echo = F}
+#query <- paste0("https://data.baltimorecity.gov/resource/9agw-sxsr.json?$where=",
+#                "SRType = 'HCD-Illegal Dumping'")
+
+#sr <- read.socrata(query)
+
+wo <- read_excel("../data/raw/chip/rptChip_CB_Cleaning 2019-08-01.xlsx")
+
+sf_sw <- read_excel("../data/raw/salesforce/CleanStat_SW_311_salesforce.xlsx")
+sf_hcd <- read_excel("../data/raw/salesforce/CleanStat_HCD_311_salesforce.xlsx")
+
+sf <- sf_sw %>%
+  filter(`Opened Date` >= "2018-01-01") %>%
+  mutate(`Block Number` = toString(`Block Number`),
+         `Street No` = toString(`Street No`)) %>%
+  bind_rows(sf_hcd %>% filter(`Opened Date` >= "2018-01-01"))
+
+```
+
+
+```{r}
+sr <- sr %>%
+  mutate(month_received = floor_date(createddate, "month"),
+         year_received = year(createddate),
+         date_received = as.Date(createddate)) %>%
+  separate(address, into = c("street_address", "city", "state"), sep=",", remove = F) %>%
+  separate(street_address, into = c("street_number_raw", "street_name_raw"), 
+           sep = "\\s", extra = "merge", remove = F) %>%
+  mutate(
+    #street_number_raw = map(str_split(street_address, " "), 1) %>% unlist(),
+    #     street_name_raw = map(str_split(street_address, " "), 2) %>% unlist(),
+         street_number = as.numeric(street_number_raw),
+         block_number = plyr::round_any(street_number, 100, floor),
+         block_address = ifelse(
+           is.na(block_number), 
+           street_address, 
+           paste(block_number, street_name_raw))) %>%
+  arrange(createddate)
+```
+
+```{r fig.height = 3, fig.width =6 }
+sr %>%
+  count(year_received, street_address) %>%
+  arrange(desc(n)) %>%
+  ungroup() %>%
+  count(year_received, n > 1) %>%
+  rename(Repeat = `n > 1`) %>%
+  group_by(year_received) %>%
+  mutate(pct = n / sum(n),
+         Repeat = ifelse(Repeat == F, "Addresses w. 1 SR", "Addresses w. more than 1 SR")) %>%
+  #filter(`n > 1` == T) %>% 
+  ggplot(aes(year_received, pct, fill = Repeat)) +
+  geom_col() +
+  theme_iteam_google_docs() +
+  scale_fill_manual(values = c("#303030", iteam.colors[1])) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_continuous(breaks = seq(2014, 2019, 1)) +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank()) +
+  geom_text(aes(x = year_received, y = pct + 0.1, 
+                label = ifelse(Repeat == "Addresses w. more than 1 SR", 
+                               paste0(round(100*pct, 1), "%"), "")),
+            color = iteam.colors[1]) +
+  #annotate("text", x = 2014.0, y = .35, "assr") +
+  ggtitle("% of Addresses with > 1 Illegal Dumping SR") +
+  theme(legend.title = element_blank())
+```
+
+```{r fig.height = 3, fig.width =6 }
+sr %>%
+  count(year_received, street_address) %>%
+  arrange(desc(n)) %>%
+  ungroup() %>%
+  count(year_received, n > 1) %>%
+  rename(Repeat = `n > 1`) %>%
+  group_by(year_received) %>%
+  mutate(pct = n / sum(n),
+         Repeat = ifelse(Repeat == F, "Addresses w. 1 SR", "Addresses w. more than 1 SR")) %>%
+  filter(Repeat == "Addresses w. more than 1 SR", 
+         year_received < 2019) %>% 
+  ggplot(aes(year_received, n)) +
+  geom_col() +
+  theme_iteam_google_docs() +
+  scale_fill_manual(values = c("#303030", iteam.colors[1])) +
+  #scale_y_continuous(labels = scales::percent) +
+  scale_x_continuous(breaks = seq(2014, 2018, 1)) +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank()) +
+  geom_text(aes(x = year_received, y = n + 25, 
+                label = n)) +
+  #annotate("text", x = 2014.0, y = .35, "assr") +
+  ggtitle("Number of Addresses with > 1 Illegal Dumping SR") +
+  theme(legend.title = element_blank())
+```
+
+
+
+
+```{r fig.height = 3, fig.width =6 }
+sr %>%
+  count(year_received, block_address) %>%
+  arrange(desc(n)) %>%
+  ungroup() %>%
+  count(year_received, n > 1) %>%
+  rename(Repeat = `n > 1`) %>%
+  group_by(year_received) %>%
+  mutate(pct = n / sum(n),
+         Repeat = ifelse(Repeat == F, "Blocks w. 1 SR", "Addresses w. more than 1 SR")) %>%
+  #filter(`n > 1` == T) %>% 
+  ggplot(aes(year_received, pct, fill = Repeat)) +
+  geom_col() +
+  theme_iteam_google_docs() +
+  scale_fill_manual(values = c("#303030", iteam.colors[1])) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_continuous(breaks = seq(2014, 2019, 1)) +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank()) +
+  geom_text(aes(x = year_received, y = pct + 0.1, 
+                label = ifelse(Repeat == "Blocks w. more than 1 SR", 
+                               paste0(round(100*pct, 1), "%"), "")),
+            color = iteam.colors[1]) +
+  #annotate("text", x = 2014.0, y = .35, "assr") +
+  ggtitle("% of Blocks with > 1 Illegal Dumping SR") +
+  theme(legend.title = element_blank())
+```
+
+```{r fig.height = 3, fig.width =6 }
+sr %>%
+  count(year_received, block_address) %>%
+  arrange(desc(n)) %>%
+  ungroup() %>%
+  count(year_received, n > 1) %>%
+  rename(Repeat = `n > 1`) %>%
+  group_by(year_received) %>%
+  mutate(pct = n / sum(n),
+         Repeat = ifelse(Repeat == F, "Blocks w. 1 SR", "Blocks w. more than 1 SR")) %>%
+  filter(Repeat == "Blocks w. more than 1 SR", 
+         year_received < 2019)%>%
+  ggplot(aes(year_received, n)) +
+  geom_col() +
+  theme_iteam_google_docs() +
+  scale_fill_manual(values = c("#303030", iteam.colors[1])) +
+  #scale_y_continuous(labels = scales::percent) +
+  scale_x_continuous(breaks = seq(2014, 2018, 1)) +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank()) +
+  geom_text(aes(x = year_received, y = n + 100, label = n)) +
+  #annotate("text", x = 2014.0, y = .35, "assr") +
+  ggtitle("Number of Blocks with > 1 Illegal Dumping SR") +
+  theme(legend.title = element_blank()) 
+```
+
+```{r}
+sf_address_counts <- sf %>% 
+  mutate(block_address = paste(`Block Number`, `Street Name`)) %>%
+  count(block_address) %>% 
+  arrange(desc(n)) %>%
+  mutate(row_n = row_number(),
+         cum_blocks = row_n / max(row_n),
+         cumsum_sr = cumsum(n),
+         cumpct_sr = cumsum_sr / sum(n))
+
+sf_block_counts <- sf %>% 
+  mutate(block_address = paste(`Block Number`, `Street Name`)) %>%
+  count(block_address) %>% 
+  arrange(desc(n)) %>%
+  mutate(row_n = row_number(),
+         cum_blocks = row_n / max(row_n),
+         cumsum_sr = cumsum(n),
+         cumpct_sr = cumsum_sr / sum(n))
+
+sf_block_counts %>%
+  ggplot(aes(row_n, cumpct_sr)) +
+  geom_line() +
+  theme_iteam_google_docs() +
+  #scale_x_continuous(breaks = seq(0, 40000, 5000)) +
+  labs(y = "Cumulative % of SR",
+       x = "Number of Blocks")
+
+```
+
+# Work Orders
+
+
+
+
+```{r}
+
+wo <- wo %>%
+  replace_na(list(block_number = "", Direction = "", StreetName = "", StreetAttr = "")) %>%
+  mutate(block_number = plyr::round_any(HouseNum, 100, floor),
+         block_address = paste(block_number, Direction, StreetName, StreetAttr),
+         date_created = as.Date(DateCreate),
+         street_address = paste(HouseNum, Direction, StreetName, StreetAttr),
+  )
+  
+sf <- sf %>% mutate(street_address = paste(`Street No`, `Street Name`))
+
+```
+
+```{r}
+wo_block_counts <- wo %>% 
+  filter(CleanType != "HIGH GRASS & WEEDS") %>% 
+  count(block_address) %>% arrange(desc(n))
+```
+
+
+```{r}
+full_table <- sr_block_counts %>% 
+  select(block_address, n) %>%
+  rename(sr_count = n) %>%
+  full_join(wo_block_counts %>% rename(wo_count = n), 
+            by = "block_address") %>%
+  filter(!grepl("descriptive address", block_address, ignore.case = T)) %>%
+  replace_na(list(sr_count = 0, wo_count = 0)) %>%
+  mutate(total_count = sr_count + wo_count,
+         sr_wo_difference = abs(sr_count - wo_count))
+  
+```
+
+```{r}
+full_table %>% count(sr_count != 0, wo_count != 0)
+```
+
+```{r}
+wo_address_counts <- wo %>% 
+  #filter(CleanType != "HIGH GRASS & WEEDS") %>% 
+  count(street_address) %>% 
+  arrange(desc(n)) %>%
+  rename(wo_count = n)
+
+sf_address_counts <- sf %>%
+  filter(
+    #`Service Request Type` != "SW-HGW",
+    `Opened Date` >= "2018-01-01") %>%
+  count(street_address) %>%
+  arrange(desc(n)) %>%
+  rename(sf_sw_count = n)
+
+wo_address_counts_sample <- wo_address_counts %>% sample_n(1000)
+sf_address_counts_sample <- sf_address_counts %>% sample_n(1000)
+```
+
+Fuzzy match on address
+
+```{r}
+
+
+
+# wo_sf_join <- sf_sw_address_counts %>%
+#   stringdist_join(wo_address_counts, 
+#                   by = "street_address",
+#                   mode = "left",
+#                   ignore_case = TRUE, 
+#                   method = "jw", 
+#                   max_dist = 3, 
+#                   distance_col = "dist") 
+```
+
+
+

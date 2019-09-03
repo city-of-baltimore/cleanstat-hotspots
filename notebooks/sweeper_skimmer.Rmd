@@ -1,0 +1,192 @@
+---
+title: "Mechanical Street Sweeping and Skimming"
+author: "Justin Elszasz"
+email: "justin.elszasz@baltimorecity.gov"
+date: "Tuesday, July 16, 2019"
+output:
+  html_notebook:
+    code_folding: hide
+    fig_height: 5
+    fig_width: 10
+    toc: yes
+    toc_depth: 2
+---
+
+```{r setup, include = FALSE, echo = FALSE, message = FALSE, cache = TRUE}
+knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, include = T,
+                                 fig.width = 10, fig.height = 5)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(ggiteam)
+```
+
+```{r}
+sweeper <- read_excel(
+  "../data/raw/sweeper_skimmer/Sweeper Mileage and Skimmer Tonnages  Updated 7-15-2019.xlsx", 
+  
+  sheet = "Street Sweeping Clean")
+
+skimmer <- read_excel(
+  "../data/raw/sweeper_skimmer/Sweeper Mileage and Skimmer Tonnages  Updated 7-15-2019.xlsx", 
+  
+  sheet = "Skimmer Clean")
+```
+
+
+```{r}
+sweeper <- sweeper %>% 
+  select(`Sweeper Tonnage`, `Sweeper Mileage`, start_clean, end_clean) %>%
+  mutate(end_clean = as.Date(end_clean))
+
+
+skimmer <- skimmer %>% 
+  select(`Skimmer Tonnage`, `Containers Removed`, start_clean, end_clean) %>%
+  mutate(end_clean = as.Date(end_clean))
+
+```
+
+```{r}
+sweeper <- sweeper %>% 
+  mutate(period_duration = (end_clean - start_clean)/ddays(1))
+```
+
+# Sweeper
+
+```{r fig.height = 3, fig.width=8}
+sweeper %>% 
+  ggplot(aes(end_clean, `Sweeper Mileage`)) + 
+  geom_line() +
+  theme_iteam_google_docs() +
+  theme(axis.title.x = element_blank()) +
+  scale_x_date(date_breaks = "1 year", date_labels = format("%Y")) +
+  labs(title = "Sweeper Mileage",
+       y = "Miles")
+```
+
+```{r fig.height = 3, fig.width=8}
+sweeper %>% 
+  ggplot(aes(end_clean, `Sweeper Tonnage`)) + 
+  geom_line() +
+  theme_iteam_google_docs() +
+  theme(axis.title.x = element_blank()) +
+  scale_x_date(date_breaks = "1 year", date_labels = format("%Y")) +
+  labs(title = "Sweeper Tonnage", 
+       y = "Tons")
+```
+
+```{r fig.width=5, fig.height=2}
+sweeper %>%
+  mutate(year = year(end_clean)) %>%
+  group_by(year) %>%
+  summarise(total_tonnage = sum(`Sweeper Tonnage`),
+            total_mileage = sum(`Sweeper Mileage`)) %>%
+  ggplot(aes(year, total_tonnage)) +
+  geom_col() + 
+  geom_text(aes(x = year, 
+                y = total_tonnage + 1000, 
+                label = round(total_tonnage,0)),
+            size = 3) +
+  theme_iteam_google_docs() +
+  theme(axis.title.x = element_blank()) +
+  labs(title = "Annual Total Sweeper Tonnage",
+       y = "Tons")
+  
+
+```
+
+```{r fig.width=5, fig.height=2}
+sweeper %>%
+  mutate(year = year(end_clean)) %>%
+  group_by(year) %>%
+  summarise(total_tonnage = sum(`Sweeper Tonnage`),
+            total_mileage = sum(`Sweeper Mileage`)) %>%
+  ggplot(aes(year, total_mileage)) +
+  geom_col() + 
+  geom_text(aes(x = year, 
+                y = total_mileage + 8000, 
+                label = round(total_mileage,0)),
+            size = 3) +
+  theme_iteam_google_docs() +
+  theme(axis.title.x = element_blank()) +
+  labs(title = "Annual Total Sweeper Mileage",
+       y = "Miles")
+  
+
+```
+
+# Skimmer
+
+
+```{r fig.height = 3, fig.width=8}
+skimmer %>% 
+  ggplot(aes(end_clean, `Skimmer Tonnage`)) + 
+  geom_line() +
+  theme_iteam_google_docs() +
+    labs(title = "Skimmer Tonnage",
+       y = "Tons") +
+  theme(axis.title.x = element_blank()) +
+  scale_x_date(date_breaks = "1 year", date_labels = format("%Y"))
+```
+
+```{r fig.height = 3, fig.width=8}
+skimmer %>% 
+  ggplot(aes(end_clean, `Containers Removed`)) + 
+  geom_col() +
+  theme_iteam_google_docs() +
+  labs(title = "Containers Removed",
+       y = "Number of Containers") +
+  theme(axis.title.x = element_blank()) +
+  scale_x_date(date_breaks = "1 year", date_labels = format("%Y"))
+```
+```{r}
+skimmer %>%
+  group_by(year(end_clean)) %>%
+  summarise(total_tonnage = sum(`Skimmer Tonnage`),
+            total_containers = sum(`Containers Removed`))
+
+```
+
+
+```{r fig.width=5, fig.height=2}
+skimmer %>%
+  mutate(year = year(end_clean)) %>%
+  group_by(year) %>%
+  summarise(total_tonnage = sum(`Skimmer Tonnage`, na.rm = T),
+            total_containers = sum(`Containers Removed`, na.rm = T)) %>%
+  ggplot(aes(year, total_tonnage)) +
+  geom_col() + 
+  geom_text(aes(x = year, 
+                y = total_tonnage + 50, 
+                label = round(total_tonnage,0)),
+            size = 3) +
+  theme_iteam_google_docs() +
+  theme(axis.title.x = element_blank()) +
+  labs(title = "Annual Total Skimmer Tonnage",
+       y = "Tons")
+  
+
+```
+
+```{r fig.width=5, fig.height=2}
+skimmer %>%
+  mutate(year = year(end_clean)) %>%
+  group_by(year) %>%
+  summarise(total_tonnage = sum(`Skimmer Tonnage`, na.rm = T),
+            total_containers = sum(`Containers Removed`, na.rm = T)) %>%
+  ggplot(aes(year, total_containers)) +
+  geom_col() + 
+  geom_text(aes(x = year, 
+                y = total_containers + 10, 
+                label = round(total_containers,0)),
+            size = 3) +
+  theme_iteam_google_docs() +
+  theme(axis.title.x = element_blank()) +
+  labs(title = "Annual Total Containers Removed",
+       y = "Containers")
+  
+
+```

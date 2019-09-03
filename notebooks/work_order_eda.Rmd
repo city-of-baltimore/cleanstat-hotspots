@@ -1,0 +1,281 @@
+---
+title: "CHIP Work Order EDA"
+author: "Justin Elszasz"
+email: "justin.elszasz@baltimorecity.gov"
+date: "Tuesday, July 16, 2019"
+output:
+  html_notebook:
+    code_folding: hide
+    fig_height: 5
+    fig_width: 10
+    toc: yes
+    toc_depth: 2
+---
+
+```{r setup, include = T, echo = FALSE, message = FALSE, cache = TRUE}
+knitr::opts_chunk$set(echo = T, warning = F, message = F, include = T,
+                                 fig.width = 10, fig.height = 5)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(ggiteam)
+library(RcppRoll)
+library(zoo)
+```
+
+```{r}
+boarding <- read_excel("../data/raw/chip/rptChip_CB_Boarding (1).xls", skip = 2)
+cleaning <- read_excel("../data/raw/chip/rptChip_CB_Cleaning_1.1.16_7.12.19.xlsx")
+```
+
+# Boarding 
+
+```{r}
+boarding <- boarding %>% 
+  mutate(Direction = ifelse(is.na(Direction), "", Direction)) %>%
+  mutate(full_address = paste(`House Num`, Direction, `Street Name`, `Street Attr`),
+         date_finish = as.Date(`Date Finish`),
+         date_created = as.Date(`Date Create`)) %>%
+  group_by(full_address) %>%
+  mutate(wo_count = n(),
+         newest_created = max(`Date Create`),
+         oldest_created = min(`Date Create`),
+         newest_close = max(`Date Finish`)) %>%
+  ungroup()
+
+```
+
+
+```{r}
+glimpse(boarding)
+```
+
+```{r}
+boarding 
+```
+
+
+
+```{r}
+boarding %>% 
+  mutate(month.created = floor_date(`Date Create`, "month")) %>%
+  count(month.created) %>%
+  ggplot(aes(month.created, n)) +
+  geom_col() + 
+  theme_iteam_google_docs()
+
+```
+
+
+```{r}
+boarding %>% count(Status)
+```
+
+
+```{r fig.height = 3, fig.width = 4}
+cumulative_boarding_counts <- boarding %>%
+  group_by(full_address) %>%
+  summarise(n = n(),
+            newest_created = max(`Date Create`),
+            oldest_created = min(`Date Create`),
+            newest_close = max(`Date Finish`)) %>%
+  arrange(desc(n)) %>%
+  mutate(row_n = row_number(),
+         cum_houses = row_n / max(row_n),
+         cumsum_wo = cumsum(n),
+         cumpct_wo = cumsum_wo / sum(n))
+  
+
+cumulative_boarding_counts %>%  
+  ggplot(aes(row_n, cumpct_wo)) +
+  geom_line() +
+  theme_iteam_google_docs() +
+  scale_x_continuous(breaks = seq(0, 15000, 1000)) +
+  labs(y = "Cumualtive % of Boarding Work Orders",
+       x = "Number of Houses")
+
+```
+
+```{r}
+x <- 0.25
+
+cumulative_boarding_counts %>% 
+  filter(abs(x - cumpct_wo) == min(abs(x - cumpct_wo))) %>%
+  select(row_n)
+```
+
+```{r}
+cumulative_boarding_counts %>% 
+  filter(!grepl("Descriptive", full_address)) %>%
+  write_csv("top10_boarding.csv")
+
+
+```
+
+```{r}
+boarding %>% arrange(desc(wo_count))
+```
+
+
+```{r fig.width = 6, fig.height = 3}
+boarding_rolling <- boarding %>%
+  mutate(time_to_finish = (`Date Finish` - `Date Create`)/ddays(1),
+         date_finish = as.Date(`Date Finish`)) %>%
+  complete(
+    date_finish = seq.Date(
+      as.Date(min(boarding$date_finish, na.rm = T)), 
+      as.Date(max(boarding$date_finish, na.rm = T)),
+      by = "day")
+  ) %>%
+  group_by(date_finish) %>%
+  summarise(day_mean_duration = mean(time_to_finish, na.rm =T)) %>%
+  ungroup() %>%
+  mutate(day_mean_duration = na_if(day_mean_duration, "NaN")) %>%
+  mutate(
+    roll90_median = 
+      rollapply(
+        data = day_mean_duration, 
+        FUN = median,
+        na.rm = T, width = 90, by = 1, align = "right", partial = T
+      ),
+    roll90_mean = 
+            rollapply(
+        data = day_mean_duration, 
+        FUN = mean,
+        na.rm = T, width = 90, by = 1, align = "right", partial = T
+      ),
+  )
+
+boarding_rolling %>% 
+  filter(date_finish >= "2016-04-01") %>%
+  ggplot(aes(x = date_finish, y = roll90_median)) +
+  geom_line() +
+  theme_iteam_google_docs() + 
+  labs(y = "Rolling 90-day Median Duration (Days)") +
+  theme(axis.title.x = element_blank()) +
+  scale_y_continuous(limits = c(0, 10))
+```
+
+boarding_r
+```{r}
+boarding_rolling %>% tail(1)
+```
+
+# Cleaning
+
+```{r}
+cleaning <- cleaning %>%
+  mutate(Direction = ifelse(is.na(Direction), "", Direction)) %>%
+  mutate(full_address = paste(HouseNum, Direction, StreetName, StreetAttr)) %>%
+  group_by(full_address) %>%
+  mutate(wo_count = n(),
+         newest_created = max(DateCreate),
+         oldest_created = min(DateCreate),
+         newest_close = max(DateFinish)) %>%
+  ungroup()
+```
+
+```{r}
+glimpse(cleaning)
+```
+
+```{r}
+cleaning %>% count(Status)
+```
+
+
+```{r}
+cleaning %>% 
+  filter(!is.na(HouseNum),
+         StreetName != "(Descriptive Address)") %>%
+  arrange(desc(wo_count))
+
+```
+
+```{r fig.height = 3, fig.width = 4}
+cumulative_cleaning_counts <- cleaning %>%
+  group_by(full_address) %>%
+  summarise(n = n(),
+            newest_created = max(DateCreate),
+            oldest_created = min(DateCreate),
+            newest_close = max(DateFinish)) %>%
+  arrange(desc(n)) %>%
+  mutate(row_n = row_number(),
+         cum_houses = row_n / max(row_n),
+         cumsum_wo = cumsum(n),
+         cumpct_wo = cumsum_wo / sum(n))
+  
+
+cumulative_cleaning_counts %>%  
+  ggplot(aes(row_n, cumpct_wo)) +
+  geom_line() +
+  theme_iteam_google_docs() +
+  scale_x_continuous(breaks = seq(0, 40000, 5000)) +
+  labs(y = "Cumulative % of Cleaning Work Orders",
+       x = "Number of Houses")
+
+```
+
+
+
+```{r}
+x <- 0.25
+
+cumulative_cleaning_counts %>% 
+  filter(abs(x - cumpct_wo) == min(abs(x - cumpct_wo))) %>%
+  select(row_n)
+```
+
+
+
+```{r}
+cumulative_cleaning_counts %>%
+    filter(!grepl("Descriptive", full_address)) %>%
+  write_csv("top10_cleaning.csv")
+```
+
+```{r fig.width = 6, fig.height = 3}
+cleaning_rolling <- cleaning %>%
+  mutate(
+    date_finish = as.Date(as.numeric(`DateFinish`), origin = "1899-12-30"),
+    time_to_finish = (date_finish - as.Date(`DateCreate`))/ddays(1))%>%
+  complete(
+    date_finish = seq.Date(
+      as.Date(min(boarding$date_finish, na.rm = T)), 
+      as.Date(max(boarding$date_finish, na.rm = T)),
+      by = "day")
+  ) %>%
+  group_by(date_finish) %>%
+  summarise(day_mean_duration = mean(time_to_finish, na.rm =T)) %>%
+  ungroup() %>%
+  mutate(day_mean_duration = na_if(day_mean_duration, "NaN")) %>%
+  mutate(
+    roll90_median = 
+      rollapply(
+        data = day_mean_duration, 
+        FUN = median,
+        na.rm = T, width = 90, by = 1, align = "right", partial = T
+      ),
+    roll90_mean = 
+            rollapply(
+        data = day_mean_duration, 
+        FUN = mean,
+        na.rm = T, width = 90, by = 1, align = "right", partial = T
+      ),
+  )
+
+cleaning_rolling %>% 
+  filter(date_finish >= "2016-04-01") %>%
+  ggplot(aes(x = date_finish, y = roll90_median)) +
+  geom_line() +
+  theme_iteam_google_docs() + 
+  labs(y = "Rolling 90-day Median Duration (Days)") +
+  theme(axis.title.x = element_blank())
+```
+```{r}
+cleaning_rolling %>% filter(roll90_median == max(roll90_median, na.rm=T))
+```
+
