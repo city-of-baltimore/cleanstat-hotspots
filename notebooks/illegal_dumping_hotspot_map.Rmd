@@ -94,6 +94,10 @@ street_segments <- readOGR("../data/raw/Buffer_of_Streets_and_311_v3/Buffer_of_S
 quads <- readOGR("../data/raw/DPW Quadrant Shapefile/SW_Quadrants_Polygon_New.shp", verbose = F)
 
 promow <- read_excel("../data/raw/ProMow_MCCPropertyList_20190730.xlsx")
+
+quads <- spTransform(quads, CRS("+init=epsg:4326"))
+
+hoods <- readRDS("../data/processed/hoods.Rds")
 ```
 
 
@@ -367,17 +371,21 @@ open_sr <- sf %>% filter(is.na(`Closed Date`),
 library(htmltools)
 top_street_segments <- subset(street_segments)
 
-map_colors <- c(iteam.colors[5],
+map_colors <- c("black",
+                iteam.colors[5],
                 iteam.colors[1],
                 iteam.colors[4],
-                "blue",
-                "red")
+                #"blue",
+                #"red",
+                iteam.colors[3])
 
-map_labels <- c("Top 100 for Inspection/Investigation", 
+map_labels <- c("Quadrant",
+                "Top 100 for Inspection/Investigation", 
                 "Top 100 for Cleaning Activity",
                 "50% of Cat 3 Work Orders",
-                "Open Work Orders",
-                "Open Service Requests")
+                #"Open Work Orders",
+                #"Open Service Requests",
+                "Neighborhoods")
 
 open_wo_labels <- paste0("Open Work Order", "<br>",
                          open_wo$`Street Address`, "<br>",
@@ -394,41 +402,50 @@ open_sr_labels <- paste0("Open Service Request <br>",
 leaflet() %>%
   setView(lng = -76.6, lat = 39.3, zoom = 12) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>% 
-  addPolygons(data = quads,
+    addPolygons(data = quads,
               fillOpacity = 0,
+              opacity = 1,
               color = "black",
-              weight = 1.5) %>%
-  addPolygons(data = block_top100_reporting_parcels,
-              fillOpacity = 0.6,
-              fillColor = map_colors[1],
-              opacity = 0,
+              weight = 3,
               group = map_labels[1]) %>%
-  addPolygons(data = block_top100_cleanup_parcels,
+  addPolygons(data = hoods,
+              fillOpacity = 0,
+              opacity = 1,
+              color = map_colors[5],
+              weight = 1.5,
+              group = map_labels[5],
+              label = ~hoods$label) %>%
+  addPolygons(data = block_top100_reporting_parcels,
               fillOpacity = 0.6,
               fillColor = map_colors[2],
               opacity = 0,
               group = map_labels[2]) %>%
-    addPolygons(data = wo_cum_50pct_parcels,
+  addPolygons(data = block_top100_cleanup_parcels,
               fillOpacity = 0.6,
               fillColor = map_colors[3],
               opacity = 0,
               group = map_labels[3]) %>%
-  addCircleMarkers(data = open_wo,
-                   lat = open_wo$Latitude,
-                   lng = open_wo$Longitude,
-                   radius = 2,
-                   label = ~lapply(open_wo_labels, HTML),
-                   group = map_labels[4],
-                   fillColor = map_colors[4],
-                   opacity = 0) %>%
-    addCircleMarkers(data = open_sr,
-                   lat = open_sr$`Location (Latitude)`,
-                   lng = open_sr$`Location (Longitude)`,
-                   radius = 2,
-                   label = ~lapply(open_sr_labels, HTML),
-                   group = map_labels[5],
-                   fillColor = map_colors[5],
-                   opacity = 0) %>%
+    addPolygons(data = wo_cum_50pct_parcels,
+              fillOpacity = 0.6,
+              fillColor = map_colors[4],
+              opacity = 0,
+              group = map_labels[4]) %>%
+  # addCircleMarkers(data = open_wo,
+  #                  lat = open_wo$Latitude,
+  #                  lng = open_wo$Longitude,
+  #                  radius = 2,
+  #                  label = ~lapply(open_wo_labels, HTML),
+  #                  group = map_labels[5],
+  #                  fillColor = map_colors[5],
+  #                  opacity = 0) %>%
+  #   addCircleMarkers(data = open_sr,
+  #                  lat = open_sr$`Location (Latitude)`,
+  #                  lng = open_sr$`Location (Longitude)`,
+  #                  radius = 2,
+  #                  label = ~lapply(open_sr_labels, HTML),
+  #                  group = map_labels[6],
+  #                  fillColor = map_colors[6],
+  #                  opacity = 0) %>%
   addLayersControl(overlayGroups = map_labels) %>%
   addLegend(position = "bottomright",
             colors = map_colors,
