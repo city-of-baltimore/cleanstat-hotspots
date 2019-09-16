@@ -98,6 +98,9 @@ promow <- read_excel("../data/raw/ProMow_MCCPropertyList_20190730.xlsx")
 quads <- spTransform(quads, CRS("+init=epsg:4326"))
 
 hoods <- readRDS("../data/processed/hoods.Rds")
+
+microzones <- readOGR("../data/raw/Areas/Zones.shp", verbose = T)
+microzones <- spTransform(microzones, CRS("+init=epsg:4326"))
 ```
 
 
@@ -377,7 +380,8 @@ map_colors <- c("black",
                 iteam.colors[4],
                 #"blue",
                 #"red",
-                iteam.colors[3])
+                iteam.colors[3],
+                "#4542f5")
 
 map_labels <- c("Quadrant",
                 "Top 100 for Inspection/Investigation", 
@@ -385,7 +389,8 @@ map_labels <- c("Quadrant",
                 "50% of Cat 3 Work Orders",
                 #"Open Work Orders",
                 #"Open Service Requests",
-                "Neighborhoods")
+                "Neighborhoods",
+                "Microzones")
 
 open_wo_labels <- paste0("Open Work Order", "<br>",
                          open_wo$`Street Address`, "<br>",
@@ -412,7 +417,7 @@ leaflet() %>%
               fillOpacity = 0,
               opacity = 1,
               color = map_colors[5],
-              weight = 1.5,
+              weight = 2,
               group = map_labels[5],
               label = ~hoods$label) %>%
   addPolygons(data = block_top100_reporting_parcels,
@@ -446,6 +451,12 @@ leaflet() %>%
   #                  group = map_labels[6],
   #                  fillColor = map_colors[6],
   #                  opacity = 0) %>%
+  addPolygons(data = microzones,
+              fillOpacity = 0,
+              opacity = 1,
+              color = map_colors[6],
+              weight = 3,
+              group = map_labels[6]) %>%
   addLayersControl(overlayGroups = map_labels) %>%
   addLegend(position = "bottomright",
             colors = map_colors,
